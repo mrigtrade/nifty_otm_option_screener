@@ -1,0 +1,33 @@
+# Credentials & Secrets (CRITICAL - Never Commit)
+backend/creds.py
+backend/data/session.json
+*.env
+.env.*
+*.pem
+*.key
+*service_account*.json
+*credentials*.json
+
+# Python Bytecode & Environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Runtime Market Data Caches & Logs
+backend/data/*
+!backend/data/.gitkeep
+logs/
+backend/logs/
+
+# Frontend Dependencies & Production Build Artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Editor & OS Artifacts
+.vscode/
+.DS_Store
+Thumbs.db
