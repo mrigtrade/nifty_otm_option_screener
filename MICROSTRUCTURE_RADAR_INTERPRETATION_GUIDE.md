@@ -39,13 +39,13 @@ flowchart TD
 
 1. **`⚡ Run Microstructure Radar (Fast)`**:
    - Dispatches **1 single batch quote** (`getMarketData('FULL')`) covering NIFTY near-month Futures, 10 key ATM±500 Call/Put boundary strikes, plus the tracked replay wings (`24,850 CE` / `21,050 PE`).
-   - Also backfills/updates [`microstructure_replay_past_week.csv`](file:///c:/Users/mrigt/Documents/mrig_new_laptop/python%20coding/korefinz%20americas/antigravity/nifty_analysis/microstructure_replay_past_week.csv), triggers a **live NSE 7:00 PM FII/DII participant sync**, and regenerates the 4-panel PNG chart.
+   - Also backfills/updates local [`microstructure_replay_past_week.csv`](file:///c:/Users/mrigt/Documents/mrig_new_laptop/python%20coding/korefinz%20americas/antigravity/otm_option_screener/backend/data/microstructure_replay_past_week.csv), triggers a **live NSE 7:00 PM FII/DII participant sync**, and regenerates the 4-panel PNG chart natively inside [`microstructure_engine.py`](file:///c:/Users/mrigt/Documents/mrig_new_laptop/python%20coding/korefinz%20americas/antigravity/otm_option_screener/backend/microstructure_engine.py).
 2. **`Run Full Pipeline`**:
-   - Executes the complete daily workflow sequentially:
-     1. [`nifty_option_seller.py`](file:///c:/Users/mrigt/Documents/mrig_new_laptop/python%20coding/korefinz%20americas/antigravity/nifty_analysis/nifty_option_seller.py) (updates `yfinance`/Spot daily candles, calculates full 5-pillar **NTSI** score, identifies 95% confidence strikes, and appends/updates the **`nifty_option_seller_daily`** Google Sheet tab).
-     2. [`nifty_microstructure_radar.py`](file:///c:/Users/mrigt/Documents/mrig_new_laptop/python%20coding/korefinz%20americas/antigravity/nifty_analysis/nifty_microstructure_radar.py) (updates live telemetry JSON, flow replay CSV, and **`nifty_microstructure_radar`** Google Sheet tab).
-     3. [`participant_service.py`](file:///c:/Users/mrigt/Documents/mrig_new_laptop/python%20coding/korefinz%20americas/antigravity/otm_option_screener/backend/participant_service.py) (refreshes official NSE `fao_participant_oi` data).
-     4. [`plot_microstructure_replay.py`](file:///c:/Users/mrigt/Documents/mrig_new_laptop/python%20coding/korefinz%20americas/antigravity/nifty_analysis/plot_microstructure_replay.py) (regenerates high-res PNG).
+   - Executes the complete daily workflow sequentially inside [`microstructure_engine.py`](file:///c:/Users/mrigt/Documents/mrig_new_laptop/python%20coding/korefinz%20americas/antigravity/otm_option_screener/backend/microstructure_engine.py) and [`participant_service.py`](file:///c:/Users/mrigt/Documents/mrig_new_laptop/python%20coding/korefinz%20americas/antigravity/otm_option_screener/backend/participant_service.py):
+     1. Refreshes daily NIFTY OHLCV candles (`yfinance` / SmartAPI fallback) and evaluates macro **NTSI** technical context (5-day return, ADX, Choppiness Index, DI spread).
+     2. Dispatches the single-batch Futures & Boundary Wall radar, updating live telemetry JSON and flow replay CSV.
+     3. Refreshes official NSE `fao_participant_oi` data.
+     4. Regenerates the 200 DPI 4-panel Matplotlib replay chart PNG (`backend/data/microstructure_replay_charts.png`).
 3. **`Sync 7:00 PM NSE Data`**:
    - On-demand download & parser for `archives.nseindia.com/content/nsccl/fao_participant_oi_{DDMMYYYY}.csv` (with automatic fallback walking back up to 7 days on weekends/holidays).
 4. **`4-Panel PNG Chart`**:
@@ -154,6 +154,6 @@ Located inside the **4-Quadrant Volatility Matrix** tab (with an inline **`Field
 
 1. **10:00 AM IST (Post-Opening Noise)**: Click **`⚡ Run Microstructure Radar (Fast)`**. Check **Master Executive Directive**, **4-Quadrant Position**, and **Call/Put Wall Statuses**. Only deploy new short strangles if **both** Q1 is active and Telemetry/FII show green confluences.
 2. **01:15 PM IST (European Open Check)**: Refresh radar (`~0.35s`) to ensure neither short wing has approached `2.0x` entry premium and Futures Basis hasn’t broken threshold (`+80` or `-20`).
-3. **03:55 PM IST (EOD Next-Day Prep)**: Click **`Run Full Pipeline`** (updates Google Sheets + finalizes NTSI daily candle) and test tomorrow’s scenarios (`+1.0%`, Flat, `-0.8%`) in the **Next-Day Scenario Simulator**.
+3. **03:55 PM IST (EOD Next-Day Prep)**: Click **`Run Full Pipeline`** (refreshes daily candles/macro NTSI, telemetry, replay & FII/DII sync) and test tomorrow’s scenarios (`+1.0%`, Flat, `-0.8%`) in the **Next-Day Scenario Simulator**.
 4. **07:05 PM IST (Inventory Verification)**: Click **`Sync 7:00 PM NSE Data`** and verify FII L/S Ratio (`25% / 75%` bounds) and Client Net Puts before leaving overnight risk open.
 

@@ -411,7 +411,7 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
                   ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
                   : 'bg-slate-100 border-slate-300 text-slate-700 hover:bg-slate-200'
               }`}
-              title="Runs nifty_option_seller.py (NTSI), nifty_microstructure_radar.py, Flow Replay & NSE FII/DII sync"
+              title="Refreshes daily NTSI candles, single-batch Microstructure Radar, Flow Replay, NSE FII/DII sync & charts"
             >
               <Layers className="h-3.5 w-3.5 text-purple-400" />
               <span>Run Full Pipeline</span>

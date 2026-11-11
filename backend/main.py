@@ -614,7 +614,7 @@ def get_microstructure_data():
 
 @app.post("/api/microstructure/run")
 def run_microstructure(mode: str = Query("radar", description="Execution mode: radar, full, or charts")):
-    """Triggers execution of nifty_analysis module (nifty_microstructure_radar.py or full strategy pipeline)."""
+    """Triggers native execution of the Microstructure Radar, macro NTSI pipeline, or 4-panel chart engine."""
     return trigger_microstructure_run(mode=mode)
 
 @app.get("/api/microstructure/status")

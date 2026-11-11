@@ -1,23 +1,19 @@
 import os
-import sys
 import json
 import time
 import datetime
 import threading
-import subprocess
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import pandas as pd
 
 import config
 import participant_service
+import microstructure_engine
 
-NIFTY_ANALYSIS_DIR = Path(r"C:\Users\mrigt\Documents\mrig_new_laptop\python coding\korefinz americas\antigravity\nifty_analysis")
-if str(NIFTY_ANALYSIS_DIR) not in sys.path:
-    sys.path.insert(0, str(NIFTY_ANALYSIS_DIR))
-
-REPLAY_CSV_PATH = NIFTY_ANALYSIS_DIR / "microstructure_replay_past_week.csv"
-CHART_PNG_PATH = NIFTY_ANALYSIS_DIR / "microstructure_replay_charts.png"
+REPLAY_CSV_PATH = microstructure_engine.REPLAY_CSV_PATH
+CHART_PNG_PATH = microstructure_engine.CHART_PNG_PATH
+DAILY_CSV_PATH = microstructure_engine.DAILY_CSV_PATH
 LATEST_RADAR_JSON = config.DATA_DIR / "latest_microstructure_radar.json"
 
 _runner_lock = threading.Lock()
@@ -205,26 +201,13 @@ def load_replay_data() -> List[Dict[str, Any]]:
         return []
 
 def get_latest_radar_record() -> Dict[str, Any]:
-    """Retrieves the newest radar reading between backend cache and nifty_analysis dir."""
-    analysis_json = NIFTY_ANALYSIS_DIR / "latest_microstructure_radar.json"
-    candidates = []
-    for p in (LATEST_RADAR_JSON, analysis_json):
-        if p.exists():
-            try:
-                candidates.append((p.stat().st_mtime, p))
-            except Exception:
-                pass
-    candidates.sort(reverse=True)
-
-    for _, p in candidates:
+    """Retrieves the newest radar reading from the native backend cache."""
+    if LATEST_RADAR_JSON.exists():
         try:
-            with open(p, 'r') as f:
-                data = json.load(f)
-                if p == analysis_json and not LATEST_RADAR_JSON.exists():
-                    save_latest_radar_record(data)
-                return data
+            with open(LATEST_RADAR_JSON, 'r') as f:
+                return json.load(f)
         except Exception:
-            continue
+            pass
 
     # Fallback to realistic reading based on current spot / session
     fallback = {
@@ -260,10 +243,6 @@ def save_latest_radar_record(record: Dict[str, Any]):
         config.DATA_DIR.mkdir(parents=True, exist_ok=True)
         with open(LATEST_RADAR_JSON, 'w') as f:
             json.dump(record, f, indent=2)
-        analysis_json = NIFTY_ANALYSIS_DIR / "latest_microstructure_radar.json"
-        if NIFTY_ANALYSIS_DIR.exists():
-            with open(analysis_json, 'w') as f:
-                json.dump(record, f, indent=2)
     except Exception as e:
         print(f"[MicrostructureService] Could not save radar record: {e}")
 
@@ -292,14 +271,11 @@ def ensure_current_session_data(force: bool = False):
         try:
             from data_engine.smartapi_client import smart_client
             if smart_client.is_connected:
-                from nifty_microstructure_radar import fetch_microstructure_data, analyze_microstructure
-                import backtest_microstructure_radar
-
-                spot, vix, fut_symbol, fut_data, calls_data, puts_data = fetch_microstructure_data()
-                rec = analyze_microstructure(spot, vix, fut_symbol, fut_data, calls_data, puts_data)
+                spot, vix, fut_symbol, fut_data, calls_data, puts_data = microstructure_engine.fetch_microstructure_data()
+                rec = microstructure_engine.analyze_microstructure(spot, vix, fut_symbol, fut_data, calls_data, puts_data)
                 save_latest_radar_record(rec)
 
-                backtest_microstructure_radar.sync_replay_to_latest(
+                microstructure_engine.sync_replay_to_latest(
                     live_session_date=rec.get("Date"),
                     spot_live=float(rec.get("Nifty Spot", spot)),
                     fut_ltp_live=float(rec.get("Futures LTP", spot)),
@@ -313,13 +289,7 @@ def ensure_current_session_data(force: bool = False):
                 csv_mtime = REPLAY_CSV_PATH.stat().st_mtime if REPLAY_CSV_PATH.exists() else 0
                 png_mtime = CHART_PNG_PATH.stat().st_mtime if CHART_PNG_PATH.exists() else 0
                 if csv_mtime > png_mtime or not CHART_PNG_PATH.exists():
-                    subprocess.run(
-                        [sys.executable, "plot_microstructure_replay.py"],
-                        cwd=str(NIFTY_ANALYSIS_DIR),
-                        capture_output=True,
-                        text=True,
-                        timeout=30
-                    )
+                    microstructure_engine.generate_replay_chart_png()
         except Exception as _se:
             print(f"[MicrostructureService] Auto-sync telemetry note: {_se}")
         finally:
@@ -384,19 +354,21 @@ def compute_quadrant_analysis(latest: Dict[str, Any], replay: List[Dict[str, Any
     cw_dist_pct = round((call_wall - spot) / spot * 100.0, 2)
     pw_dist_pct = round((spot - put_wall) / spot * 100.0, 2)
 
-    # 4. Derive NTSI Score (0 to 100)
-    ntsi_score = 48.0 # Default realistic score for recent momentum regime
+    # 4. Derive NTSI Score (0 to 100) from native daily store (or replay fallback)
+    ntsi_score = 48.0
     try:
-        daily_csv = NIFTY_ANALYSIS_DIR / "nifty_daily_data.csv"
-        if daily_csv.exists():
-            df_n = pd.read_csv(daily_csv, index_col=0, parse_dates=True)
+        ret5 = None
+        if DAILY_CSV_PATH.exists():
+            df_n = pd.read_csv(DAILY_CSV_PATH, index_col=0, parse_dates=True)
             if 'Close' in df_n.columns and len(df_n) >= 15:
-                # 5-day return
                 ret5 = float((df_n['Close'].iloc[-1] / df_n['Close'].iloc[-6] - 1) * 100) if len(df_n) >= 6 else 5.0
-                vix_pts = 25.0 if 13.0 <= vix <= 17.5 else (12.0 if (12.0 <= vix < 13.0 or 17.5 < vix <= 19.0) else 0.0)
-                mom_pts = 10.0 if abs(ret5) < 1.5 else (5.0 if abs(ret5) < 2.5 else 0.0)
-                chop_pts = 20.0 if abs(ret5) < 2.5 else 12.0
-                ntsi_score = round(vix_pts + mom_pts + chop_pts + 10.0, 1)
+        elif replay:
+            ret5 = float(replay[-1].get('ret_5d', 5.0))
+        if ret5 is not None:
+            vix_pts = 25.0 if 13.0 <= vix <= 17.5 else (12.0 if (12.0 <= vix < 13.0 or 17.5 < vix <= 19.0) else 0.0)
+            mom_pts = 10.0 if abs(ret5) < 1.5 else (5.0 if abs(ret5) < 2.5 else 0.0)
+            chop_pts = 20.0 if abs(ret5) < 2.5 else 12.0
+            ntsi_score = round(vix_pts + mom_pts + chop_pts + 10.0, 1)
     except Exception:
         pass
 
@@ -831,102 +803,83 @@ def get_full_microstructure_payload() -> Dict[str, Any]:
     }
 
 def _execute_script_worker(mode: str):
-    """Background worker executing the requested script plus NSE FII/DII participant sync."""
+    """Background worker executing the native microstructure radar, NTSI refresh & NSE FII/DII sync."""
     global _runner_state, _last_auto_sync_ts
     start_time = time.time()
     _runner_state["is_running"] = True
     _runner_state["current_mode"] = mode
     _runner_state["last_status"] = "running"
-    _runner_state["message"] = f"Executing {mode} pipeline..."
+    _runner_state["message"] = f"Executing native {mode} pipeline..."
     _runner_state["last_output"] = ""
     _runner_state["last_error"] = ""
-    
+
+    logs = []
+    overall_ok = True
+
     try:
-        cmd = []
-        cwd = str(NIFTY_ANALYSIS_DIR)
-        
-        if mode == "radar":
-            cmd = [sys.executable, "nifty_microstructure_radar.py"]
-            _runner_state["message"] = "Step 1/2: Fetching zero-timeout batch quotes, updating replay & NSE FII sync..."
-        elif mode == "full":
-            _runner_state["message"] = "Step 1/3: Running Full NIFTY Strategy (NTSI model & GSheet)..."
-            cmd = [sys.executable, "nifty_option_seller.py"]
-        elif mode == "charts":
-            cmd = [sys.executable, "plot_microstructure_replay.py"]
+        if mode == "charts":
             _runner_state["message"] = "Regenerating 4-panel microstructure replay charts..."
+            if not REPLAY_CSV_PATH.exists():
+                microstructure_engine.sync_replay_to_latest()
+            ok_chart = microstructure_engine.generate_replay_chart_png()
+            overall_ok = ok_chart
+            logs.append(f"[Charts] Generated {CHART_PNG_PATH.name}: {'OK' if ok_chart else 'Failed'}")
         else:
-            cmd = [sys.executable, "nifty_microstructure_radar.py"]
+            if mode == "full":
+                _runner_state["message"] = "Step 1/4: Updating NIFTY daily candles & macro NTSI technicals..."
+                tech_res = microstructure_engine.refresh_daily_candles_and_ntsi()
+                logs.append(f"[Macro NTSI] Daily candles synced ({tech_res.get('latest_date', 'cache')}) | 5d Ret: {tech_res.get('ret5', 0.0):+.2f}% | ADX: {tech_res.get('adx', 0.0)} | CHOP: {tech_res.get('chop', 50.0)}")
 
-        proc = subprocess.run(
-            cmd,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
-        
-        stdout = proc.stdout or ""
-        stderr = proc.stderr or ""
-        overall_ok = (proc.returncode == 0)
-        
-        # If mode was full, execute nifty_microstructure_radar next
-        if mode == "full" and overall_ok:
-            _runner_state["message"] = "Step 2/3: Running Microstructure Radar & updating replay flow..."
-            proc2 = subprocess.run(
-                [sys.executable, "nifty_microstructure_radar.py"],
-                cwd=cwd,
-                capture_output=True,
-                text=True,
-                timeout=60
-            )
-            stdout += "\n" + (proc2.stdout or "")
-            stderr += "\n" + (proc2.stderr or "")
-            if proc2.returncode != 0:
-                overall_ok = False
+            _runner_state["message"] = "Fetching single-batch Futures & Boundary Walls quote..."
+            from data_engine.smartapi_client import smart_client
+            if not smart_client.is_connected:
+                logs.append("[SmartAPI] Session not connected — using latest cached radar & replay data.")
+            else:
+                spot, vix, fut_symbol, fut_data, calls_data, puts_data = microstructure_engine.fetch_microstructure_data()
+                rec = microstructure_engine.analyze_microstructure(spot, vix, fut_symbol, fut_data, calls_data, puts_data)
+                save_latest_radar_record(rec)
+                logs.append(f"[Radar] Session: {rec.get('Date')} {rec.get('Time (IST)')} | Spot: {rec.get('Nifty Spot')} | Basis: {rec.get('Futures Basis (pts)')} pts | Directive: {rec.get('Actionable Option Seller Directive')}")
 
-        # Sync NSE 7:00 PM FII / DII / PRO Participant OI for both 'radar' and 'full' modes
-        if overall_ok and mode in ("radar", "full"):
+                _runner_state["message"] = "Updating incremental microstructure replay CSV..."
+                microstructure_engine.sync_replay_to_latest(
+                    live_session_date=rec.get("Date"),
+                    spot_live=float(rec.get("Nifty Spot", spot)),
+                    fut_ltp_live=float(rec.get("Futures LTP", spot)),
+                    fut_vol_live=int(rec.get("Futures Volume", 0)),
+                    ce_ltp_live=fut_data.get("_replay_ce_ltp"),
+                    ce_vol_live=fut_data.get("_replay_ce_vol"),
+                    pe_ltp_live=fut_data.get("_replay_pe_ltp"),
+                )
+                logs.append(f"[Replay] Synced {REPLAY_CSV_PATH.name} through {rec.get('Date')}.")
+
+            _runner_state["message"] = "Syncing NSE 7:00 PM FII / DII / PRO Participant OI..."
             try:
-                _runner_state["message"] = "Syncing NSE 7:00 PM FII / DII / PRO Participant OI..."
                 p_res = participant_service.fetch_and_parse_participant_oi(force=True)
                 fii_ls = p_res.get("fii", {}).get("ls_ratio_pct", "--")
                 fii_net = p_res.get("fii", {}).get("net_futures_contracts", 0)
-                stdout += f"\n[NSE Participant Sync] Session: {p_res.get('date')} | FII L/S: {fii_ls}% ({fii_net:+,} net fut)"
+                logs.append(f"[NSE Participant Sync] Session: {p_res.get('date')} | FII L/S: {fii_ls}% ({fii_net:+,} net fut)")
             except Exception as _pe:
-                stdout += f"\n[NSE Participant Sync] Warning: {_pe}"
+                logs.append(f"[NSE Participant Sync] Warning: {_pe}")
 
-        # Always re-generate the charts after radar/full execution if successful
-        if overall_ok and mode != "charts":
-            try:
-                _runner_state["message"] = "Updating 4-panel microstructure replay charts..."
-                subprocess.run(
-                    [sys.executable, "plot_microstructure_replay.py"],
-                    cwd=cwd,
-                    capture_output=True,
-                    text=True,
-                    timeout=30
-                )
-            except Exception:
-                pass
-                
+            _runner_state["message"] = "Updating 4-panel microstructure replay charts..."
+            if microstructure_engine.generate_replay_chart_png():
+                logs.append(f"[Charts] Updated {CHART_PNG_PATH.name}.")
+
         duration = round(time.time() - start_time, 2)
         _runner_state["last_duration_sec"] = duration
         _runner_state["last_run_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        stdout = "\n".join(logs)
         _runner_state["last_output"] = stdout[-2000:] if len(stdout) > 2000 else stdout
-        
+
         if overall_ok:
             _last_auto_sync_ts = time.time()
             _runner_state["last_status"] = "completed"
             _runner_state["message"] = f"Finished {mode} run (+ NSE FII sync) in {duration}s."
         else:
             _runner_state["last_status"] = "error"
-            _runner_state["last_error"] = stderr[-2000:] if len(stderr) > 2000 else stderr
-            _runner_state["message"] = f"Failed with exit code {proc.returncode}"
-            
-    except subprocess.TimeoutExpired:
-        _runner_state["last_status"] = "error"
-        _runner_state["last_error"] = "Process execution timed out after 120s"
-        _runner_state["message"] = "Execution timed out"
+            _runner_state["last_error"] = "Execution did not complete cleanly."
+            _runner_state["message"] = "Execution warning"
+
     except Exception as e:
         _runner_state["last_status"] = "error"
         _runner_state["last_error"] = str(e)
@@ -934,8 +887,9 @@ def _execute_script_worker(mode: str):
     finally:
         _runner_state["is_running"] = False
 
+
 def trigger_microstructure_run(mode: str = "radar") -> Dict[str, Any]:
-    """Launches the background process to execute nifty_analysis modules."""
+    """Launches the background thread to execute the native microstructure & NSE FII pipeline."""
     global _runner_state
     with _runner_lock:
         if _runner_state["is_running"]:
@@ -955,6 +909,6 @@ def trigger_microstructure_run(mode: str = "radar") -> Dict[str, Any]:
         
         return {
             "status": "started",
-            "message": f"Triggered {mode} run in background thread.",
+            "message": f"Triggered native {mode} run in background thread.",
             "state": _runner_state
         }

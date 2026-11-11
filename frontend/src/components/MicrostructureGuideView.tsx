@@ -299,7 +299,7 @@ export const MicrostructureGuideView: React.FC<MicrostructureGuideViewProps> = (
               Run Full Pipeline
             </div>
             <p className={`leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-              Runs the entire institutional daily update sequentially: <strong>(1)</strong> <code className="text-purple-400">nifty_option_seller.py</code> (NTSI 5-pillar score, 95% strikes &amp; Google Sheet update), <strong>(2)</strong> <code className="text-purple-400">nifty_microstructure_radar.py</code>, <strong>(3)</strong> NSE FII/DII Sync, and <strong>(4)</strong> 4-Panel 200 DPI PNG generation.
+              Runs the entire institutional daily update sequentially inside <code className="text-purple-400">microstructure_engine.py</code>: <strong>(1)</strong> Daily NIFTY OHLCV &amp; NTSI macro update, <strong>(2)</strong> Single-batch Microstructure Radar &amp; Replay CSV sync, <strong>(3)</strong> NSE 7:00 PM FII/DII Sync, and <strong>(4)</strong> 4-Panel 200 DPI PNG generation.
             </p>
           </div>
 

@@ -188,7 +188,7 @@ export const Header: React.FC<HeaderProps> = ({
                 onRunMicrostructure?.('radar');
               }}
               disabled={isMicrostructureRunning}
-              title="Run NIFTY Microstructure Radar (nifty_microstructure_radar.py)"
+              title="Run NIFTY Microstructure Radar (Single-Batch Flow, Replay & NSE FII Sync)"
               className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-l-lg transition border disabled:opacity-75 ${
                 isMicrostructureRunning
                   ? 'bg-cyan-600/30 border-cyan-500/40 text-cyan-300'
@@ -224,10 +224,10 @@ export const Header: React.FC<HeaderProps> = ({
             }`}>
               <div className="px-2.5 py-1.5 border-b border-slate-800/50 mb-1">
                 <span className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                  Nifty Analysis Execution
+                  Microstructure &amp; NTSI Execution
                 </span>
                 <p className={`text-[11px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Modules located in nifty_analysis
+                  Native Studio Backend Engine
                 </p>
               </div>
 

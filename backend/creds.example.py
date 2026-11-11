@@ -7,3 +7,4 @@ client_id = "YOUR_CLIENT_CODE"
 pin = "YOUR_4_DIGIT_PIN"
 api_secret = "YOUR_SECRET_KEY_IF_APPLICABLE"
 totp_secret = "YOUR_BASE32_TOTP_SECRET"
+

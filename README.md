@@ -330,6 +330,7 @@ otm_option_screener/
 ├── backend/
 │   ├── main.py                                   # FastAPI routes, 75m close scheduler, startup auto-sync
 │   ├── config.py                                 # Application constants, tokens (Spot, VIX), 75m sessions
+│   ├── microstructure_engine.py                  # Native batch radar, replay CSV sync, NTSI daily loader & PNG chart engine
 │   ├── microstructure_service.py                 # Flow radar sync, GEX/NTSI 4-Quadrant engine & Asymmetric Veto banner
 │   ├── participant_service.py                    # Official 7:00 PM NSE Participant OI (FII/PRO/Client/DII) downloader
 │   ├── new_strikes_manager.py                    # New Strike Debut Tracker across far-month expiries
