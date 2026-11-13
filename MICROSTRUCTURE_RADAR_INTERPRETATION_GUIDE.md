@@ -157,3 +157,25 @@ Located inside the **4-Quadrant Volatility Matrix** tab (with an inline **`Field
 3. **03:55 PM IST (EOD Next-Day Prep)**: Click **`Run Full Pipeline`** (refreshes daily candles/macro NTSI, telemetry, replay & FII/DII sync) and test tomorrow’s scenarios (`+1.0%`, Flat, `-0.8%`) in the **Next-Day Scenario Simulator**.
 4. **07:05 PM IST (Inventory Verification)**: Click **`Sync 7:00 PM NSE Data`** and verify FII L/S Ratio (`25% / 75%` bounds) and Client Net Puts before leaving overnight risk open.
 
+---
+
+## 8. Multi-Cycle Expiry Selector & Historical Archiving
+
+To ensure that real market lessons are never overwritten, the Microstructure Radar features a **Multi-Cycle Architecture**:
+
+1. **Cycle Switcher Toolbar (`Position Cycle`)**:
+   - **`📁 Nov 2026 Expiry (Oct 27 – Nov 23)` [ARCHIVED BENCHMARK]**:
+     - *Underlyings*: `24,850 CE` (+10.5% OTM) vs `21,050 PE` (-10.0% OTM).
+     - *Empirical Lesson*: Demonstrates the real mechanics of the October–November 2026 vertical breakout rally (+2,300 pts). The mechanical $2.0\times$ Hard Stop exited the short call on Nov 03 at ₹12.60 (capping loss at -₹7.10/sh). Paired with the put decay (+₹27.85/sh), the trade locked in a net profit of **+₹518.75/lot**, while unhedged short sellers who held blindly suffered an catastrophic blowout (call exploded 100x to ₹554.00, losing -₹10,023/lot).
+   - **`🟢 Dec 2026 Expiry (Nov 11 – Dec 29)` [ACTIVE TRADING CYCLE]**:
+     - *Underlyings*: `27,700 CE` (+10.5% OTM) vs `22,500 PE` (-10.2% OTM) at ~46 DTE.
+     - *Live Tracking*: Real-time monitoring of live SmartAPI LTPs, dynamically tracking premium decay toward the 50% target lock with active 2.0x Hard Stop levels.
+
+2. **One-Click Expiry Archiving**:
+   - Active cycles feature an **`Archive This Cycle for Future Ref`** button.
+   - Upon monthly settlement or expiry transition, clicking this permanently freezes the cycle's daily sessions, P&L outcomes, and metadata into `backend/data/archives/` for ongoing educational reference.
+
+3. **Dynamic Coordinate Math & Audit Table**:
+   - Switching cycles automatically reconfigures Chart C2's title, strike labels, 2.0x Hard Stop line, 50% Decay Target line, and the underlying Audit Table headers to match the selected contract pair.
+
+

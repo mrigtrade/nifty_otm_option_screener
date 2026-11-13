@@ -74,8 +74,13 @@ export const syncNewStrikesBackup = async (): Promise<NewStrikesResponse> => {
   return res.data;
 };
 
-export const getMicrostructureData = async (): Promise<MicrostructurePayload> => {
-  const res = await client.get('/microstructure/data');
+export const getMicrostructureData = async (cycleId?: string): Promise<MicrostructurePayload> => {
+  const res = await client.get('/microstructure/data', { params: cycleId ? { cycle_id: cycleId } : {} });
+  return res.data;
+};
+
+export const archiveMicrostructureCycle = async (cycleId: string, summary?: string): Promise<any> => {
+  const res = await client.post('/microstructure/archive-cycle', null, { params: { cycle_id: cycleId, summary } });
   return res.data;
 };
 

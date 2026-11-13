@@ -19,6 +19,8 @@ env/
 # Runtime Market Data Caches & Logs
 backend/data/*
 !backend/data/.gitkeep
+!backend/data/archives/
+!backend/data/archives/**
 logs/
 backend/logs/
 

@@ -1,0 +1,6 @@
+Date,Spot,5d_Return_%,Futures_LTP,Futures_Basis_pts,Futures_Basis_%,Futures_Volume,27700_CE_LTP,27700_CE_Volume,22500_PE_LTP,Microstructure_Regime,Microstructure_Directive,Trader_Action
+2026-11-08,24986.4,6.59,25029.0,42.6,0.17,27309,48.5,800,77.0,BULLISH OVERDRIVE,VETO NAKED CALLS (Squeeze Alert),Sell Bull Put Spread Only / Widen Calls to >= 14.5% OTM
+2026-11-09,25044.65,5.18,25033.2,-11.45,-0.05,65934,48.5,800,58.7,BULLISH OVERDRIVE,VETO NAKED CALLS (Squeeze Alert),Sell Bull Put Spread Only / Widen Calls to >= 14.5% OTM
+2026-11-11,25255.05,5.4,25360.1,105.05,0.42,13421,41.9,800,41.7,BULLISH OVERDRIVE,VETO NAKED CALLS (Squeeze Alert),Sell Bull Put Spread Only / Widen Calls to >= 14.5% OTM
+2026-11-12,25299.35,3.11,25308.7,9.35,0.04,54759,33.25,800,34.15,BULLISH OVERDRIVE,VETO NAKED CALLS (Squeeze Alert),Sell Bull Put Spread Only / Widen Calls to >= 14.5% OTM
+2026-11-13,25102.9,0.29,25143.0,40.1,0.16,37963,23.0,1500,35.0,NEUTRAL / RANGE-BOUND,SYMMETRIC STRANGLE APPROVED,Deploy Standard 95% Safe Strangle

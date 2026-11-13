@@ -262,6 +262,38 @@ export interface MicrostructureRunnerState {
   message: string;
 }
 
+export interface ExpiryCycleMeta {
+  id: string;
+  name: string;
+  status: 'archived' | 'active';
+  badge: string;
+  badge_color: string;
+  expiry_date: string;
+  dte_label: string;
+  underlying_spot_at_entry: number;
+  ce_symbol: string;
+  ce_strike: number;
+  ce_otm_pct: string;
+  ce_token: string;
+  ce_entry_price: number;
+  ce_stop_loss: number;
+  ce_stop_executed_date?: string | null;
+  pe_symbol: string;
+  pe_strike: number;
+  pe_otm_pct: string;
+  pe_token: string;
+  pe_entry_price: number;
+  pe_target_lock: number;
+  pe_target_executed_date?: string | null;
+  initial_credit: number;
+  lot_size: number;
+  csv_file: string;
+  disciplined_pnl_str: string;
+  unhedged_blowout_str: string;
+  case_study_summary: string;
+  archived_at?: string | null;
+}
+
 export interface MicrostructureReplayItem {
   date: string;
   spot: number;
@@ -276,6 +308,8 @@ export interface MicrostructureReplayItem {
   regime: string;
   directive: string;
   trader_action: string;
+  is_call_stopped?: boolean;
+  is_put_locked?: boolean;
   ce_pnl_disciplined_pts: number;
   pe_pnl_disciplined_pts: number;
   net_pnl_disciplined_pts: number;
@@ -478,6 +512,9 @@ export interface MicrostructurePayload {
   latest: Record<string, string>;
   directive_badge: MicrostructureDirectiveBadge;
   replay: MicrostructureReplayItem[];
+  cycles?: ExpiryCycleMeta[];
+  selected_cycle_id?: string;
+  selected_cycle_meta?: ExpiryCycleMeta;
   cheat_codes: MicrostructureCheatCodes;
   has_chart_image: boolean;
   runner_state: MicrostructureRunnerState;

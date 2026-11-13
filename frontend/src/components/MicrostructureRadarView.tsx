@@ -25,16 +25,18 @@ import {
   Clock,
   X,
   Users,
-  BookOpen
+  BookOpen,
+  Archive
 } from 'lucide-react';
 import {
   MicrostructurePayload,
   MicrostructureReplayItem,
+  ExpiryCycleMeta,
   BasisRegimeCheatCode,
   CoreRuleCheatCode,
   DecisionMatrixItem
 } from '../types';
-import { getMicrostructureData, runMicrostructure, getMicrostructureStatus, syncParticipantOI } from '../services/api';
+import { getMicrostructureData, runMicrostructure, getMicrostructureStatus, syncParticipantOI, archiveMicrostructureCycle } from '../services/api';
 import { QuadrantMatrixView } from './QuadrantMatrixView';
 import { ParticipantEducationalGuide } from './ParticipantEducationalGuide';
 import { MicrostructureGuideView } from './MicrostructureGuideView';
@@ -69,6 +71,11 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
   const [participantSyncMsg, setParticipantSyncMsg] = useState<string>('');
   const [chartImgTs, setChartImgTs] = useState<number>(() => Date.now());
 
+  // Multi-cycle management state
+  const [selectedCycleId, setSelectedCycleId] = useState<string>('nov_2026');
+  const [isArchiving, setIsArchiving] = useState<boolean>(false);
+  const [archiveMsg, setArchiveMsg] = useState<string>('');
+
   // Handle manual sync of official 7:00 PM NSE Participant OI
   const handleSyncParticipant = async () => {
     setIsSyncingParticipant(true);
@@ -90,12 +97,16 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
     }
   };
 
-  // Fetch microstructure data
-  const loadData = async () => {
+  // Fetch microstructure data with cycle support
+  const loadData = async (cycleId?: string) => {
     setIsLoading(true);
     try {
-      const res = await getMicrostructureData();
+      const targetCycle = cycleId || selectedCycleId;
+      const res = await getMicrostructureData(targetCycle);
       setData(res);
+      if (res.selected_cycle_id && res.selected_cycle_id !== selectedCycleId) {
+        setSelectedCycleId(res.selected_cycle_id);
+      }
       setChartImgTs(Date.now());
       if (res.runner_state?.is_running) {
         setIsExecuting(true);
@@ -105,6 +116,33 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
       console.error('Failed to load microstructure data:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Handle user switching between expiry cycles
+  const handleCycleChange = async (newCycleId: string) => {
+    setSelectedCycleId(newCycleId);
+    setSelectedPeriod('all');
+    setHoveredReplayDate(null);
+    await loadData(newCycleId);
+  };
+
+  // Handle archiving the current active cycle
+  const handleArchiveCycle = async (cycleId: string) => {
+    if (!window.confirm(`Are you sure you want to archive cycle '${cycleId}'? This will lock it into permanent storage as an empirical case study.`)) {
+      return;
+    }
+    setIsArchiving(true);
+    setArchiveMsg('Archiving cycle...');
+    try {
+      const res = await archiveMicrostructureCycle(cycleId);
+      setArchiveMsg(res.message || 'Cycle archived successfully!');
+      await loadData(cycleId);
+    } catch (err: any) {
+      setArchiveMsg(err.message || 'Failed to archive cycle');
+    } finally {
+      setIsArchiving(false);
+      setTimeout(() => setArchiveMsg(''), 4500);
     }
   };
 
@@ -161,6 +199,12 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
 
   const latest = data?.latest || {};
   const replay = data?.replay || [];
+  const cycles = data?.cycles || [];
+  const activeCycle = data?.selected_cycle_meta || cycles.find(c => c.id === selectedCycleId) || cycles[0];
+  const ceStrike = activeCycle?.ce_strike || 24850;
+  const peStrike = activeCycle?.pe_strike || 21050;
+  const ceStopPrice = activeCycle?.ce_stop_loss || 12.60;
+  const peTargetPrice = activeCycle?.pe_target_lock || 9.75;
   const cheatCodes = data?.cheat_codes;
   const directiveBadge = data?.directive_badge;
 
@@ -293,7 +337,7 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
     let maxVal = Math.max(450, Math.ceil((rawMaxPrem + 20) / 50) * 50);
 
     if (chartScaleMode === 'zoomed') {
-      maxVal = 45; // 0 to 45 pts to clearly discern the tilt from 5.5 to 10.1 to 12.60!
+      maxVal = Math.max(45, Math.ceil((ceStopPrice * 1.5) / 10) * 10); // Dynamically fits the 2x stop trigger
     } else if (chartScaleMode === 'log') {
       minVal = 1;
       maxVal = Math.max(500, Math.ceil((rawMaxPrem + 50) / 100) * 100);
@@ -332,8 +376,8 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
     const callPath = callPoints.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
     const putPath = putPoints.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
 
-    const yStopLoss = getYVal(12.60);
-    const yTargetLock = getYVal(9.75);
+    const yStopLoss = getYVal(ceStopPrice);
+    const yTargetLock = getYVal(peTargetPrice);
 
     return {
       w,
@@ -355,7 +399,7 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
       yStopLoss,
       yTargetLock
     };
-  }, [filteredReplay, chartScaleMode]);
+  }, [filteredReplay, chartScaleMode, ceStopPrice, peTargetPrice]);
 
   return (
     <div className={`p-6 space-y-6 ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
@@ -450,7 +494,7 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
             </button>
 
             <button
-              onClick={loadData}
+              onClick={() => loadData()}
               disabled={isLoading || isExecuting}
               className={`p-2 rounded-xl border transition ${
                 isDark
@@ -754,6 +798,105 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
         )
       ) : (
         <>
+          {/* ------------------------------------------------------------- */}
+          {/* Multi-Cycle Expiry Selector & Historical Archive Banner       */}
+          {/* ------------------------------------------------------------- */}
+          <div className={`rounded-2xl border p-4 shadow-md ${
+            isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'
+          }`}>
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              {/* Cycle Buttons */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 mr-2">
+                  <Layers className="h-4 w-4 text-cyan-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Position Cycle:</span>
+                </div>
+                {cycles.map((c) => {
+                  const isSelected = (selectedCycleId === c.id);
+                  const isArchived = c.status === 'archived';
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => handleCycleChange(c.id)}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition border ${
+                        isSelected
+                          ? isArchived
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm ring-1 ring-amber-500/30'
+                            : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm ring-1 ring-emerald-500/30'
+                          : isDark
+                          ? 'bg-slate-800/60 border-slate-700/60 text-slate-400 hover:text-white hover:bg-slate-800'
+                          : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-black hover:bg-slate-200'
+                      }`}
+                    >
+                      <span>{isArchived ? '📁' : '🟢'}</span>
+                      <span>{c.name}</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                        isArchived ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/20 text-emerald-400'
+                      }`}>
+                        {c.status.toUpperCase()}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Archive Current Cycle Action Button */}
+              {activeCycle?.status === 'active' && (
+                <button
+                  onClick={() => handleArchiveCycle(activeCycle.id)}
+                  disabled={isArchiving}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition self-start lg:self-auto"
+                  title="Snapshots the current active cycle into permanent archive storage for future reference"
+                >
+                  <Archive className="h-3.5 w-3.5" />
+                  <span>{isArchiving ? 'Archiving...' : 'Archive This Cycle for Future Ref'}</span>
+                </button>
+              )}
+            </div>
+
+            {/* Active Cycle Context Banner */}
+            {activeCycle && (
+              <div className={`mt-3 p-3.5 rounded-xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs ${
+                activeCycle.status === 'archived'
+                  ? isDark ? 'bg-amber-950/20 border-amber-800/40 text-amber-200/90' : 'bg-amber-50 border-amber-200 text-amber-900'
+                  : isDark ? 'bg-emerald-950/20 border-emerald-800/40 text-emerald-200/90' : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              }`}>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-extrabold uppercase tracking-wide ${
+                      activeCycle.status === 'archived'
+                        ? 'bg-amber-500 text-black'
+                        : 'bg-emerald-500 text-black'
+                    }`}>
+                      {activeCycle.badge}
+                    </span>
+                    <span className="font-bold">
+                      Strikes: {activeCycle.ce_strike?.toLocaleString()} CE ({activeCycle.ce_otm_pct}) & {activeCycle.pe_strike?.toLocaleString()} PE ({activeCycle.pe_otm_pct})
+                    </span>
+                    <span className="opacity-75">| Expiry: {activeCycle.expiry_date} ({activeCycle.dte_label})</span>
+                    <span className="opacity-75">| Entry Spot: {activeCycle.underlying_spot_at_entry?.toLocaleString('en-IN')}</span>
+                  </div>
+                  <p className="text-[11px] opacity-90 leading-relaxed">
+                    {activeCycle.case_study_summary}
+                  </p>
+                </div>
+
+                <div className="shrink-0 text-right">
+                  <span className="text-[10px] uppercase block opacity-75">Disciplined Strangle Result</span>
+                  <span className="font-mono font-bold text-sm text-emerald-400">
+                    {activeCycle.disciplined_pnl_str}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {archiveMsg && (
+              <div className="mt-2 text-xs font-semibold text-cyan-400">
+                {archiveMsg}
+              </div>
+            )}
+          </div>
+
           {/* Replay Period Selector Toolbar */}
           <div className={`rounded-xl border px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-sm ${
             isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200'
@@ -1053,9 +1196,9 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
                   C2
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold tracking-tight">Call Squeeze (24,850 CE) vs Put Decay (21,050 PE)</h3>
+                  <h3 className="text-sm font-bold tracking-tight">Call Squeeze ({ceStrike.toLocaleString()} CE) vs Put Decay ({peStrike.toLocaleString()} PE)</h3>
                   <p className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    Convex gamma risk vs steady theta capture with 2x stop loss level (₹12.60)
+                    Convex gamma risk vs steady theta capture with 2x stop loss level (₹{ceStopPrice.toFixed(2)})
                   </p>
                 </div>
               </div>
@@ -1121,10 +1264,10 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
                     fontSize="9"
                     fontWeight="bold"
                   >
-                    2x Hard Stop-Loss (₹12.60)
+                    2x Hard Stop-Loss (₹{ceStopPrice.toFixed(2)})
                   </text>
 
-                  {/* 50% Decay Target Line (9.75 pts) */}
+                  {/* 50% Decay Target Line */}
                   <line
                     x1={chart2Metrics.padL}
                     y1={chart2Metrics.yTargetLock}
@@ -1142,16 +1285,16 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
                     fontSize="8.5"
                     fontWeight="bold"
                   >
-                    50% Profit Target (₹9.75)
+                    50% Profit Target (₹{peTargetPrice.toFixed(2)})
                   </text>
 
                   {/* Y-Axis Labels */}
                   {chartScaleMode === 'zoomed' ? (
                     <>
-                      <text x={chart2Metrics.padL - 8} y={chart2Metrics.getYVal(40)} textAnchor="end" fill={isDark ? '#94a3b8' : '#64748b'} fontSize="9">₹40</text>
-                      <text x={chart2Metrics.padL - 8} y={chart2Metrics.getYVal(25)} textAnchor="end" fill={isDark ? '#94a3b8' : '#64748b'} fontSize="9">₹25</text>
-                      <text x={chart2Metrics.padL - 8} y={chart2Metrics.getYVal(12.6)} textAnchor="end" fill="#3b82f6" fontSize="9" fontWeight="bold">₹12.6</text>
-                      <text x={chart2Metrics.padL - 8} y={chart2Metrics.getYVal(5)} textAnchor="end" fill={isDark ? '#94a3b8' : '#64748b'} fontSize="9">₹5</text>
+                      <text x={chart2Metrics.padL - 8} y={chart2Metrics.getYVal(chart2Metrics.maxVal * 0.9)} textAnchor="end" fill={isDark ? '#94a3b8' : '#64748b'} fontSize="9">₹{(chart2Metrics.maxVal * 0.9).toFixed(0)}</text>
+                      <text x={chart2Metrics.padL - 8} y={chart2Metrics.getYVal(chart2Metrics.maxVal * 0.55)} textAnchor="end" fill={isDark ? '#94a3b8' : '#64748b'} fontSize="9">₹{(chart2Metrics.maxVal * 0.55).toFixed(0)}</text>
+                      <text x={chart2Metrics.padL - 8} y={chart2Metrics.yStopLoss} textAnchor="end" fill="#3b82f6" fontSize="9" fontWeight="bold">₹{ceStopPrice.toFixed(1)}</text>
+                      <text x={chart2Metrics.padL - 8} y={chart2Metrics.getYVal(chart2Metrics.maxVal * 0.12)} textAnchor="end" fill={isDark ? '#94a3b8' : '#64748b'} fontSize="9">₹{(chart2Metrics.maxVal * 0.12).toFixed(0)}</text>
                     </>
                   ) : chartScaleMode === 'log' ? (
                     <>
@@ -1257,12 +1400,14 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
                     );
                   })}
 
-                  {/* Nov 03 2x Stop Executed Annotation (Dynamic per selected period) */}
-                  {(() => {
-                    const nov3Idx = filteredReplay.findIndex(r => r.date === '2026-11-03');
-                    if (nov3Idx === -1) return null;
-                    const xPos = chart2Metrics.getX(nov3Idx);
-                    const yPos = chart2Metrics.getYVal(22.85);
+                  {/* 2x Stop Executed Annotation (Dynamic per active cycle stop date) */}
+                  {activeCycle?.ce_stop_executed_date && (() => {
+                    const stopDateStr = activeCycle.ce_stop_executed_date;
+                    const stopIdx = filteredReplay.findIndex(r => r.date === stopDateStr);
+                    if (stopIdx === -1) return null;
+                    const xPos = chart2Metrics.getX(stopIdx);
+                    const pt = chart2Metrics.callPoints[stopIdx];
+                    const yPos = pt ? pt.y : chart2Metrics.yStopLoss;
                     return (
                       <g>
                         <circle
@@ -1292,7 +1437,7 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
                           fontSize="8.5"
                           fontWeight="bold"
                         >
-                          Nov 03: 2x Stop Executed
+                          {stopDateStr.slice(5)}: 2x Stop Executed
                         </text>
                       </g>
                     );
@@ -1310,7 +1455,7 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
               <div className="flex items-center gap-1.5">
                 <span className="h-2.5 w-2.5 rounded-sm bg-rose-500" />
                 <span className="font-semibold text-rose-400">
-                  24,850 CE: ₹{activeHoverItem?.ce_ltp?.toFixed(2) || '--'}
+                  {ceStrike.toLocaleString()} CE: ₹{activeHoverItem?.ce_ltp?.toFixed(2) || '--'}
                 </span>
                 <span className="text-[10px] text-slate-400">
                   (Vol: {activeHoverItem?.ce_vol?.toLocaleString() || 0})
@@ -1319,17 +1464,17 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
               <div className="flex items-center gap-1.5">
                 <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
                 <span className="font-semibold text-emerald-400">
-                  21,050 PE: ₹{activeHoverItem?.pe_ltp?.toFixed(2) || '--'}
+                  {peStrike.toLocaleString()} PE: ₹{activeHoverItem?.pe_ltp?.toFixed(2) || '--'}
                 </span>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold ${
-                activeHoverItem?.net_pnl_disciplined_lot >= 0
+                (activeHoverItem?.net_pnl_disciplined_lot ?? 0) >= 0
                   ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                   : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
               }`}>
-                Disciplined P&L: {activeHoverItem?.net_pnl_disciplined_lot >= 0 ? '+' : ''}₹{activeHoverItem?.net_pnl_disciplined_lot?.toLocaleString()}
+                Disciplined P&L: {(activeHoverItem?.net_pnl_disciplined_lot ?? 0) >= 0 ? '+' : ''}₹{activeHoverItem?.net_pnl_disciplined_lot?.toLocaleString()}
               </span>
             </div>
           </div>
@@ -1677,19 +1822,19 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
               <Activity className="h-4 w-4" />
             </div>
             <div>
-              <h3 className="text-sm font-bold tracking-tight">Microstructure Replay Audit ({filteredReplay.length} Sessions Selected)</h3>
+              <h3 className="text-sm font-bold tracking-tight">{activeCycle?.name || 'Microstructure Replay'} Audit ({filteredReplay.length} Sessions Selected)</h3>
               <p className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                Session-by-session breakdown demonstrating 2x stop execution, strangle cushioning, and +₹559/lot win vs -₹10,019/lot blowout
+                Session breakdown for {ceStrike.toLocaleString()} CE & {peStrike.toLocaleString()} PE ({activeCycle?.dte_label || 'Month-End Strangle'})
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              Disciplined Win: +₹559/lot
+              Disciplined: {activeCycle?.disciplined_pnl_str}
             </span>
             <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20">
-              Blind Hold Loss: -₹10,019/lot
+              Blind Hold: {activeCycle?.unhedged_blowout_str}
             </span>
           </div>
         </div>
@@ -1702,8 +1847,8 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
                 <th className="py-2.5 px-3 uppercase tracking-wider font-semibold">Spot</th>
                 <th className="py-2.5 px-3 uppercase tracking-wider font-semibold">5d Ret %</th>
                 <th className="py-2.5 px-3 uppercase tracking-wider font-semibold">Basis (pts)</th>
-                <th className="py-2.5 px-3 uppercase tracking-wider font-semibold">24850 CE</th>
-                <th className="py-2.5 px-3 uppercase tracking-wider font-semibold">21050 PE</th>
+                <th className="py-2.5 px-3 uppercase tracking-wider font-semibold">{ceStrike} CE</th>
+                <th className="py-2.5 px-3 uppercase tracking-wider font-semibold">{peStrike} PE</th>
                 <th className="py-2.5 px-3 uppercase tracking-wider font-semibold">Microstructure Directive</th>
                 <th className="py-2.5 px-3 uppercase tracking-wider font-semibold">Disciplined P&L</th>
                 <th className="py-2.5 px-3 uppercase tracking-wider font-semibold">Blind Hold P&L</th>
@@ -1712,9 +1857,8 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
             <tbody className="divide-y divide-slate-800/40">
               {filteredReplay.map((row) => {
                 const isOct29 = row.date === '2026-10-29';
-                const isNov03 = row.date === '2026-11-03';
-                const isNov05 = row.date === '2026-11-05';
-                const isNov06 = row.date === '2026-11-06';
+                const isStopDate = Boolean(activeCycle?.ce_stop_executed_date && row.date === activeCycle.ce_stop_executed_date);
+                const isTargetDate = Boolean(activeCycle?.pe_target_executed_date && row.date === activeCycle.pe_target_executed_date);
                 const isHovered = hoveredReplayDate === row.date;
 
                 return (
@@ -1726,7 +1870,7 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
                         ? isDark ? 'bg-cyan-500/10' : 'bg-cyan-50'
                         : isOct29
                         ? isDark ? 'bg-rose-950/15' : 'bg-rose-50/50'
-                        : isNov03
+                        : isStopDate
                         ? isDark ? 'bg-blue-950/15' : 'bg-blue-50/50'
                         : isDark ? 'hover:bg-slate-800/30' : 'hover:bg-slate-50'
                     }`}
@@ -1734,8 +1878,8 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
                     <td className="py-2.5 px-3 font-mono font-bold flex items-center gap-1.5">
                       {row.date}
                       {isOct29 && <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500 text-white font-sans font-bold">TELL</span>}
-                      {isNov03 && <span className="text-[9px] px-1 py-0.2 rounded bg-blue-500 text-white font-sans font-bold">2X STOP</span>}
-                      {isNov05 && <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500 text-white font-sans font-bold">TARGET</span>}
+                      {isStopDate && <span className="text-[9px] px-1 py-0.2 rounded bg-blue-500 text-white font-sans font-bold">2X STOP</span>}
+                      {isTargetDate && <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500 text-white font-sans font-bold">TARGET</span>}
                     </td>
                     <td className="py-2.5 px-3 font-mono font-semibold">{row.spot.toLocaleString('en-IN')}</td>
                     <td className={`py-2.5 px-3 font-mono font-semibold ${row.ret_5d > 2.5 ? 'text-rose-400' : 'text-slate-400'}`}>

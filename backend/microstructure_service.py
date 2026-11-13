@@ -10,6 +10,7 @@ import pandas as pd
 import config
 import participant_service
 import microstructure_engine
+import microstructure_cycles
 
 REPLAY_CSV_PATH = microstructure_engine.REPLAY_CSV_PATH
 CHART_PNG_PATH = microstructure_engine.CHART_PNG_PATH
@@ -720,12 +721,21 @@ def compute_quadrant_analysis(latest: Dict[str, Any], replay: List[Dict[str, Any
         'participant_oi': participant_oi
     }
 
-def get_full_microstructure_payload() -> Dict[str, Any]:
+def get_full_microstructure_payload(cycle_id: Optional[str] = None) -> Dict[str, Any]:
     """Assembles all data needed for the dedicated Microstructure Radar tab."""
     # Auto-sync latest completed / current session data for default view if stale
     ensure_current_session_data(force=False)
 
-    replay = load_replay_data()
+    cycles = microstructure_cycles.get_all_cycles()
+    selected_cycle_id = cycle_id or "nov_2026"
+    valid_ids = [c.get("id") for c in cycles]
+    if selected_cycle_id not in valid_ids and valid_ids:
+        selected_cycle_id = valid_ids[0]
+
+    selected_cycle_meta, replay = microstructure_cycles.load_cycle_replay(selected_cycle_id)
+    if not replay:
+        replay = load_replay_data()
+
     latest = get_latest_radar_record()
     participant_oi = participant_service.get_latest_participant_record()
     quadrant_analysis = compute_quadrant_analysis(latest, replay, participant_oi=participant_oi)
@@ -795,6 +805,9 @@ def get_full_microstructure_payload() -> Dict[str, Any]:
             "full_text": full_text
         },
         "replay": replay,
+        "cycles": cycles,
+        "selected_cycle_id": selected_cycle_id,
+        "selected_cycle_meta": selected_cycle_meta,
         "cheat_codes": CHEAT_CODES,
         "has_chart_image": has_chart_image,
         "runner_state": _runner_state,

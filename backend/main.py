@@ -599,6 +599,7 @@ def sync_new_strikes(force_download: bool = Query(True, description="Force downl
     return scan_and_update_new_strikes(force_master_download=force_download)
 
 
+import microstructure_cycles
 from microstructure_service import (
     get_full_microstructure_payload,
     trigger_microstructure_run,
@@ -608,9 +609,19 @@ from microstructure_service import (
 )
 
 @app.get("/api/microstructure/data")
-def get_microstructure_data():
-    """Returns comprehensive microstructure readings, historical replay, and operational cheat codes."""
-    return get_full_microstructure_payload()
+def get_microstructure_data(cycle_id: Optional[str] = Query(None, description="Expiry cycle ID: nov_2026, dec_2026, etc.")):
+    """Returns comprehensive microstructure readings, multi-cycle historical replay, and operational cheat codes."""
+    return get_full_microstructure_payload(cycle_id=cycle_id)
+
+@app.get("/api/microstructure/cycles")
+def get_microstructure_cycles():
+    """Returns list of registered expiry cycles (archived benchmarks and active live cycles)."""
+    return microstructure_cycles.get_all_cycles()
+
+@app.post("/api/microstructure/archive-cycle")
+def archive_cycle_endpoint(cycle_id: str = Query(..., description="Cycle ID to archive"), summary: Optional[str] = Query(None)):
+    """Archives an active expiry cycle for future learning and historical reference."""
+    return microstructure_cycles.archive_current_cycle(cycle_id=cycle_id, final_summary=summary)
 
 @app.post("/api/microstructure/run")
 def run_microstructure(mode: str = Query("radar", description="Execution mode: radar, full, or charts")):

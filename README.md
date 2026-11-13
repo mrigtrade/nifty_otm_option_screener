@@ -109,8 +109,9 @@ Modeled after the institutional architecture of `one_app`, it features a modern 
 - **Dynamic Interactive High-Resolution Replay Charts**:
   - Automatically backfills missing historical trading sessions and appends live/completed readings to `microstructure_replay_past_week.csv` so all plots stay continuously current up to the latest session.
   - **Panel 1: Spot Price vs. Futures Basis**: Dynamic auto-scaled spot index line combined with colored basis bars and an overlay basis line plot.
-  - **Panel 2: Call Squeeze vs. Put Decay Curve**: Contrasts the $24,850$ CE squeeze against $21,050$ PE decay with three Y-axis modes (`Zoom Tilt 0-45`, `Log`, `Linear`), marking the **$2.0\times$ Hard Stop (`₹12.60`)** and **$50\%$ Profit Target Lock (`₹9.75`)**.
-  - **Dynamic Replay Period Selector**: Quick-slice buttons for *All Sessions (`10-27 – Latest`)*, *Oct 27–30 Basis Tell*, *Nov 02 – Latest (Execution & Live)*, *Last 5 Days*, and *Last 3 Days*.
+  - **Panel 2: Call Squeeze vs. Put Decay Curve**: Contrasts Call Squeeze against Put Decay with three Y-axis modes (`Zoom Tilt 0-45`, `Log`, `Linear`), dynamically marking the **$2.0\times$ Hard Stop** and **$50\%$ Profit Target Lock**.
+  - **Multi-Cycle Expiry Selector & Permanent Historical Archiving**: Allows toggling between historical archived benchmarks (e.g. *Nov 2026: 24,850 CE vs 21,050 PE* case study demonstrating the 2x stop loss in a +2,300 pt runaway rally) and active live cycles (e.g. *Dec 2026: 27,700 CE vs 22,500 PE*). Active cycles can be snapshotted and archived into `backend/data/archives/` with one click, preserving empirical market lessons forever while dynamically re-binding Chart C2 coordinate math and the session audit table.
+  - **Dynamic Replay Period Selector**: Quick-slice buttons for *All Sessions*, *Basis Tell*, *Execution & Live*, *Last 5 Days*, and *Last 3 Days*.
   - **Publication 4-Panel 200 DPI PNG Modal**: Dynamic date headers and non-overlapping X-axis tick spacing with cache-busted refresh.
 
 ### 11. 4-Quadrant Volatility Decision Matrix & Two-Tier Primacy Interlock
