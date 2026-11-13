@@ -262,6 +262,40 @@ export interface MicrostructureRunnerState {
   message: string;
 }
 
+export interface CyclePillarCheck {
+  id: string;
+  name: string;
+  required: string;
+  current: string;
+  status: 'PASS' | 'FAIL' | 'PENDING';
+  passed: boolean;
+  detail: string;
+}
+
+export interface CycleDeploymentReadiness {
+  deployment_status: 'READY_TO_DEPLOY' | 'ON_HOLD' | 'WAITING_CALENDAR';
+  title: string;
+  badge: string;
+  badge_color: string;
+  action_verdict: string;
+  target_expiry: string;
+  target_dte: number;
+  pass_count: number;
+  total_count: number;
+  pillars: CyclePillarCheck[];
+  recommended_strikes: {
+    ce_strike: number;
+    ce_otm_pct: string;
+    pe_strike: number;
+    pe_otm_pct: string;
+    target_expiry: string;
+    est_combined_credit: string;
+    target_50pct_decay: string;
+    hard_stop_ce: string;
+    hard_stop_pe: string;
+  };
+}
+
 export interface ExpiryCycleMeta {
   id: string;
   name: string;
@@ -515,6 +549,7 @@ export interface MicrostructurePayload {
   cycles?: ExpiryCycleMeta[];
   selected_cycle_id?: string;
   selected_cycle_meta?: ExpiryCycleMeta;
+  deployment_readiness?: CycleDeploymentReadiness;
   cheat_codes: MicrostructureCheatCodes;
   has_chart_image: boolean;
   runner_state: MicrostructureRunnerState;

@@ -897,6 +897,115 @@ export const MicrostructureRadarView: React.FC<MicrostructureRadarViewProps> = (
             )}
           </div>
 
+          {/* ------------------------------------------------------------- */}
+          {/* Next Cycle Deployment Readiness Barometer Card                */}
+          {/* ------------------------------------------------------------- */}
+          {data?.deployment_readiness && (() => {
+            const r = data.deployment_readiness;
+            const isReady = r.deployment_status === 'READY_TO_DEPLOY';
+            const isOnHold = r.deployment_status === 'ON_HOLD';
+            return (
+              <div className={`rounded-2xl border p-4 shadow-md transition-all ${
+                isReady
+                  ? isDark ? 'bg-emerald-950/20 border-emerald-500/40' : 'bg-emerald-50 border-emerald-300'
+                  : isOnHold
+                  ? isDark ? 'bg-amber-950/20 border-amber-500/40' : 'bg-amber-50 border-amber-300'
+                  : isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200'
+              }`}>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-800/40">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`h-8 w-8 rounded-xl flex items-center justify-center font-bold text-xs ${
+                      isReady ? 'bg-emerald-500/20 text-emerald-400' : isOnHold ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-800 text-slate-400'
+                    }`}>
+                      {isReady ? '🚀' : isOnHold ? '⚠️' : '⏳'}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Next Cycle Deployment Alert:</span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded font-extrabold uppercase ${
+                          isReady ? 'bg-emerald-500 text-black' : isOnHold ? 'bg-amber-500 text-black' : 'bg-slate-700 text-slate-300'
+                        }`}>
+                          {r.badge}
+                        </span>
+                        <span className="text-xs font-bold text-cyan-400">
+                          {r.target_expiry} ({r.target_dte} DTE)
+                        </span>
+                      </div>
+                      <p className="text-xs font-semibold mt-0.5">
+                        {r.action_verdict}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="text-right">
+                      <span className="text-[10px] uppercase block text-slate-400">Readiness Score</span>
+                      <span className={`font-mono font-bold text-sm ${r.pass_count === 5 ? 'text-emerald-400' : r.pass_count >= 3 ? 'text-amber-400' : 'text-rose-400'}`}>
+                        {r.pass_count} / {r.total_count} Pillars Green
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5-Pillar Checklist Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 mt-3">
+                  {r.pillars.map((pillar) => {
+                    const isPass = pillar.status === 'PASS';
+                    return (
+                      <div
+                        key={pillar.id}
+                        className={`p-2.5 rounded-xl border text-xs flex flex-col justify-between ${
+                          isPass
+                            ? isDark ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200' : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+                            : isDark ? 'bg-rose-950/20 border-rose-500/30 text-rose-200' : 'bg-rose-50/80 border-rose-200 text-rose-900'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wide opacity-75">{pillar.name}</span>
+                          <span className={`text-[9px] px-1.5 py-0.2 rounded font-black ${
+                            isPass ? 'bg-emerald-500/30 text-emerald-400' : 'bg-rose-500/30 text-rose-400'
+                          }`}>
+                            {pillar.status}
+                          </span>
+                        </div>
+                        <div className="font-mono font-bold text-xs truncate" title={pillar.current}>
+                          {pillar.current}
+                        </div>
+                        <div className="text-[10px] opacity-75 mt-0.5 truncate" title={pillar.required}>
+                          Req: {pillar.required}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Pre-Computed 95% Strangle Strike Targets for Next Cycle */}
+                {r.recommended_strikes && (
+                  <div className={`mt-3 p-2.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 text-xs ${
+                    isDark ? 'bg-slate-950/50 border-slate-800/80' : 'bg-slate-100 border-slate-200'
+                  }`}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] uppercase font-bold text-slate-400">Pre-Computed Safe Strikes ({r.target_expiry}):</span>
+                      <span className="font-bold text-rose-400 font-mono">
+                        {r.recommended_strikes.ce_strike.toLocaleString()} CE ({r.recommended_strikes.ce_otm_pct})
+                      </span>
+                      <span className="text-slate-500 font-bold">&</span>
+                      <span className="font-bold text-emerald-400 font-mono">
+                        {r.recommended_strikes.pe_strike.toLocaleString()} PE ({r.recommended_strikes.pe_otm_pct})
+                      </span>
+                      <span className="text-slate-400">| Credit: {r.recommended_strikes.est_combined_credit}</span>
+                      <span className="text-amber-400">| Target Lock: {r.recommended_strikes.target_50pct_decay}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-[11px] font-mono">
+                      <span className="text-blue-400">Hard Stops: {r.recommended_strikes.hard_stop_ce} CE / {r.recommended_strikes.hard_stop_pe} PE</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Replay Period Selector Toolbar */}
           <div className={`rounded-xl border px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-sm ${
             isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200'

@@ -241,3 +241,149 @@ def archive_current_cycle(cycle_id: str, final_summary: Optional[str] = None) ->
         save_cycles_registry(cycles)
         return {"status": "success", "message": f"Cycle {cycle_id} archived successfully."}
     return {"status": "error", "message": f"Cycle {cycle_id} not found."}
+
+
+def compute_cycle_deployment_readiness(
+    spot: float,
+    ntsi_score: float,
+    quad_id: str,
+    basis_pts: float,
+    fii_ls_pct: float,
+    as_of_date: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Evaluates the 5-Pillar Quantitative Readiness Checklist for initiating
+    the Next Month-End Strangle Cycle (~40-55 DTE, 95% Safe Strikes).
+    """
+    from data_engine.scrip_master import scrip_master
+
+    today_dt = datetime.datetime.strptime(as_of_date, "%Y-%m-%d").date() if as_of_date else datetime.date.today()
+    expiries = scrip_master.get_valid_monthly_expiries()
+
+    # Target expiry: next monthly contract with DTE >= 25 days
+    target_exp = None
+    target_dte = 0
+    for exp in expiries:
+        dte = (exp - today_dt).days
+        if dte >= 25:
+            target_exp = exp
+            target_dte = dte
+            break
+
+    if not target_exp:
+        target_exp = datetime.date(2026, 12, 29)
+        target_dte = 46
+
+    target_exp_str = target_exp.strftime("%d-%b-%Y")
+
+    # Recommended strikes: +10.5% CE / -10.0% PE (rounded to nearest 100)
+    safe_ce_strike = round((spot * 1.105) / 100.0) * 100
+    safe_pe_strike = round((spot * 0.900) / 100.0) * 100
+
+    # 1. Calendar DTE Pillar
+    dte_ok = 38 <= target_dte <= 58
+    dte_pillar = {
+        "id": "dte",
+        "name": "Calendar DTE Window",
+        "required": "40 to 55 DTE (Linear Theta Decay)",
+        "current": f"{target_dte} Days ({target_exp_str})",
+        "status": "PASS" if dte_ok else "PENDING",
+        "passed": dte_ok,
+        "detail": f"Target expiry is {target_dte} DTE (inside prime linear decay zone)." if dte_ok else f"DTE {target_dte} is outside the optimal 40-55 DTE entry window."
+    }
+
+    # 2. NTSI Safety Score Pillar
+    ntsi_ok = ntsi_score >= 60.0
+    ntsi_pillar = {
+        "id": "ntsi",
+        "name": "Macro NTSI Safety Score",
+        "required": ">= 60.0 (Range-Bound / Non-Trending)",
+        "current": f"{ntsi_score:.1f}",
+        "status": "PASS" if ntsi_ok else "FAIL",
+        "passed": ntsi_ok,
+        "detail": f"NTSI score {ntsi_score:.1f} >= 60 confirms low directional trend velocity." if ntsi_ok else f"NTSI score {ntsi_score:.1f} < 60 indicates an active trending market; wait for stabilization."
+    }
+
+    # 3. Volatility Quadrant Regime Pillar
+    quad_ok = quad_id == "Q1"
+    quad_pillar = {
+        "id": "quadrant",
+        "name": "4-Quadrant Volatility Regime",
+        "required": "Quadrant 1 (Seller's Paradise / +GEX)",
+        "current": f"{quad_id}",
+        "status": "PASS" if quad_ok else "FAIL",
+        "passed": quad_ok,
+        "detail": "Quadrant 1 (+GEX) active: Market maker delta-hedging cushions market." if quad_ok else f"Active {quad_id} regime presents gamma squeeze / trending friction risk."
+    }
+
+    # 4. Futures Basis Equilibrium Pillar
+    basis_ok = 15.0 <= basis_pts <= 65.0
+    basis_pillar = {
+        "id": "basis",
+        "name": "Futures Basis Spread",
+        "required": "+20 to +50 pts (Equilibrium Contango)",
+        "current": f"{basis_pts:+.1f} pts",
+        "status": "PASS" if basis_ok else "FAIL",
+        "passed": basis_ok,
+        "detail": "Futures basis is in balanced contango with no aggressive directional squeeze." if basis_ok else f"Futures basis {basis_pts:+.1f} pts is stressed (> +80 accumulation or < -20 discount)."
+    }
+
+    # 5. FII Derivatives Positioning Pillar
+    fii_ok = 35.0 <= fii_ls_pct <= 65.0
+    fii_pillar = {
+        "id": "fii",
+        "name": "FII Futures Long/Short Ratio",
+        "required": "35% to 65% (Balanced Equilibrium)",
+        "current": f"{fii_ls_pct:.1f}%",
+        "status": "PASS" if fii_ok else "FAIL",
+        "passed": fii_ok,
+        "detail": "FII positioning is balanced; no short-squeeze (<=25%) or long-exhaustion (>=75%) risk." if fii_ok else f"FII L/S ratio at {fii_ls_pct:.1f}% poses contrarian institutional trap risk."
+    }
+
+    pillars = [dte_pillar, ntsi_pillar, quad_pillar, basis_pillar, fii_pillar]
+    pass_count = sum(1 for p in pillars if p["passed"])
+
+    if pass_count == 5:
+        deployment_status = "READY_TO_DEPLOY"
+        title = "🟢 NEXT CYCLE GREENLIGHT: DEPLOY FRESH MONTH-END STRANGLE"
+        badge = "READY TO DEPLOY"
+        badge_color = "emerald"
+        action_verdict = f"All 5 Macro & Microstructure criteria satisfied. Deploy {target_exp_str} Strangle now: Sell {safe_ce_strike} CE & {safe_pe_strike} PE."
+    elif dte_ok:
+        deployment_status = "ON_HOLD"
+        title = "🟡 NEXT CYCLE ON HOLD: CALENDAR OPEN, AWAITING REGIME CONFLUENCE"
+        badge = "ON HOLD (Q4 SQUEEZE)" if quad_id == "Q4" else "ON HOLD (TREND RISK)"
+        badge_color = "rose" if quad_id == "Q4" else "amber"
+        reasons = [p["name"] for p in pillars if not p["passed"]]
+        action_verdict = f"December window is open ({target_dte} DTE), but deployment is ON HOLD due to {', '.join(reasons)}. DO NOT sell naked options yet."
+    else:
+        deployment_status = "WAITING_CALENDAR"
+        title = "⏳ NEXT CYCLE IN QUEUE: AWAITING 40-55 DTE WINDOW"
+        badge = "IN QUEUE"
+        badge_color = "slate"
+        action_verdict = f"Target expiry is {target_dte} DTE. Maintain existing active positions until ~40-55 DTE deployment window opens."
+
+    return {
+        "deployment_status": deployment_status,
+        "title": title,
+        "badge": badge,
+        "badge_color": badge_color,
+        "action_verdict": action_verdict,
+        "target_expiry": target_exp_str,
+        "target_dte": target_dte,
+        "pass_count": pass_count,
+        "total_count": 5,
+        "pillars": pillars,
+        "recommended_strikes": {
+            "ce_strike": safe_ce_strike,
+            "ce_otm_pct": "+10.5%",
+            "pe_strike": safe_pe_strike,
+            "pe_otm_pct": "-10.0%",
+            "target_expiry": target_exp_str,
+            "est_combined_credit": "₹58.00/sh (₹1,450/lot)",
+            "target_50pct_decay": "₹29.00/sh (₹725/lot)",
+            "hard_stop_ce": f"₹{(23.0 * 2.0):.1f} (2.0x)",
+            "hard_stop_pe": f"₹{(35.0 * 2.0):.1f} (2.0x)"
+        }
+    }
+

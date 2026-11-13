@@ -795,6 +795,26 @@ def get_full_microstructure_payload(cycle_id: Optional[str] = None) -> Dict[str,
         directive_color = "emerald"
 
     has_chart_image = CHART_PNG_PATH.exists()
+
+    # Calculate Next Cycle Deployment Readiness Barometer
+    try:
+        spot_val = float(latest.get("Nifty Spot", 25030.35))
+    except Exception:
+        spot_val = 25030.35
+    try:
+        basis_pts_val = float(str(latest.get("Futures Basis (pts)", "28.2")).replace("+", ""))
+    except Exception:
+        basis_pts_val = 28.2
+    session_dt_str = latest.get("Date", "2026-11-13")
+
+    deployment_readiness = microstructure_cycles.compute_cycle_deployment_readiness(
+        spot=spot_val,
+        ntsi_score=ntsi_val,
+        quad_id=quad_id,
+        basis_pts=basis_pts_val,
+        fii_ls_pct=fii_ls,
+        as_of_date=session_dt_str
+    )
     
     return {
         "latest": latest,
@@ -808,6 +828,7 @@ def get_full_microstructure_payload(cycle_id: Optional[str] = None) -> Dict[str,
         "cycles": cycles,
         "selected_cycle_id": selected_cycle_id,
         "selected_cycle_meta": selected_cycle_meta,
+        "deployment_readiness": deployment_readiness,
         "cheat_codes": CHEAT_CODES,
         "has_chart_image": has_chart_image,
         "runner_state": _runner_state,
